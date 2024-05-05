@@ -1,0 +1,26 @@
+name: sisrdm
+channels:
+  - pytorch
+  - nvidia
+  - mpich
+dependencies:
+  - python>=3.8, < 3.10 
+  - pip
+  
+  - pip:
+    - imageio-ffmpeg>=0.4.3
+    - xformers>=0.0.16
+    - einops==0.6.0
+    - blobfile==2.0.2
+    - mpi4py
+    - pyspng
+    - psutil
+    - click>=8.0
+    - numpy>=1.20
+    - click>=8.0
+    - pillow>=8.3.1
+    - scipy>=1.7.1, < 1.11.2
+    - pytorch=1.13.1
+    - requests
+    - tqdm
+    - imageio
