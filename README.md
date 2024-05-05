@@ -1,0 +1,91 @@
+## SISRDM 
+- s_block_second = 0.15
+- s_noise_second = 0.23
+
+- dataloader only running in linux, you change "\\" to "//" to fit windows
+- not yet reached SISRDM`s limit ,no time to training anymore
+
+- `cfg_1=1 cfg_2=1: num_step= 120, 180`
+- `cfg_1=1 cfg_2=3.5: num_step = 256, 200`
+- if train.py `blur-sigma-max=3` then generate.py `blur_sigma_max_second=3`
+
+## still tidying up
+arguments for configurations of the first stage are:
+
+- `num_steps_first`: number of sampling steps.
+- `sigma_min_first` & `sigma_max_first`: lowest & highest noise level.
+- `rho_first`: time step exponent.
+- `cfg_scale_first`: scale of classifier-free guidance.
+- `S_churn`: stochasticity strength.
+- `S_min` & `S_max`: min & max noise level.
+- `S_noise`: noise inflation.
+
+Arguments for configurations of the second stage are:
+
+- `num_steps_second`: number of sampling steps.
+- `sigma_min_second` & `sigma_max_second`: lowest & highest noise level.
+- `blur_sigma_max_second`: maximum sigma of blurring schedule.
+- `rho_second`: time step exponent.
+- `cfg_scale_second`: scale of classifier-free guidance.
+- `up_scale_second`: scale of upsampling.
+- `truncation_sigma_second` & `truncation_t_second`: truncation point of noise & time schedule.
+- `s_block_second`: strength of block noise addition.
+- `s_noise_second`: strength of stochasticity.
+
+## Dataset Preparation
+following SDM
+
+### CelebAMask-HQ preprocessed
+https://drive.google.com/file/d/1TKhN9kDvJEcpbIarwsd1_fsTR2vGx6LC/view
+
+## training device
+- 1 * V100 32G for pre-testing、program and debug , provided by Visual Computing and Virtual Reality Key Laboratory of Sichuan Province
+- 1 * RTX4090 24G , 1 * A100 40G , 1 * A40 48G for stage-1 training, Rent by GPU computing platform
+- 1 * A100 40G and 1 * A100 80G for stage-2 training, Rent by GPU computing platform
+
+### !!!
+- !!!  in stage 2,   batch-size=1 > 24G !!!  , batch-size=3 = 44G 
+- !!! A100s recommond
+
+### !!! all must fit envionment .espcially scipy!!!  and  xformer!!!
+
+## pick up in paper
+```
+celebA test:
+    \labels\28229.png
+    \labels\28177.png
+    \labels\28030.png
+    \labels\28069.png
+
+ADE val:
+    639.png
+    317.png
+    671.png
+    693.png
+```
+## Acknowledgements
+
+This implementation is based on 
+- https://github.com/NVlabs/edm (codebase of EDM)
+- https://github.com/THUDM/RelayDiffusion (RDM) 
+- https://github.com/WeilunWang/semantic-diffusion-model (SDM) 
+- https://github.com/ader47/jittor-jieke-semantic_images_synthesis (SDM + VQVAE)
+
+FID computation is based on 
+- https://github.com/THUDM/RelayDiffusion
+
+LPIPS computation is based on 
+- https://github.com/richzhang/PerceptualSimilarity
+
+Thanks a lot!
+
+## train
+just run `python train_XXX` or run command in scripts `xxx.sh`
+
+## test
+just run `python generate_XXX`
+
+## trick
+- warm up: lr = 1e-3 (train 1M) label = torch.zero_like(label), unconditional pretrain
+- loss scale: when loss = 0.1XXX and hold, loss scale=2 and more bathsize  make it to 0.2XXX, when then again stable to 0.1XXX ,set loss scale to 4 make it to 0.2XXX ... max loss scale 16, at last loss scale=1
+- loss scale: in trainloop `t = 32 if images.shape[-1] == 64 else 256` make `t` bigger
