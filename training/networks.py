@@ -30,24 +30,25 @@ def weight_init(shape, mode, fan_in, fan_out):
 
 #----------------------------------------------------------------------------
 # SPADE
-"""
-TODO fix to fp16
-"""
 @persistence.persistent_class
 class SPADEGroupNorm(torch.nn.Module):
     def __init__(self, norm_nc, label_nc, eps = 1e-5):
         super().__init__()
-
-        self.norm = torch.nn.GroupNorm(32, norm_nc, affine=False) # 32/16
-
         self.eps = eps
+
+        # self.norm = torch.nn.GroupNorm(32, norm_nc, affine=False)         # num_groups = 32/16, only float32
+        self.norm = GroupNorm(num_channels=norm_nc, num_groups=32,eps=self.eps)                 # float16 and float32
+        
         nhidden = 128
         self.mlp_shared = torch.nn.Sequential(
-            torch.nn.Conv2d(label_nc, nhidden, kernel_size=3, padding=1),
+            # torch.nn.Conv2d(label_nc, nhidden, kernel_size=3, padding=1),                     # only float32
+            Conv2d(in_channels=label_nc,out_channels=nhidden,kernel=3),                         # float16 and float32
             torch.nn.ReLU()
         )
-        self.mlp_gamma = torch.nn.Conv2d(nhidden, norm_nc, kernel_size=3, padding=1)
-        self.mlp_beta = torch.nn.Conv2d(nhidden, norm_nc, kernel_size=3, padding=1)
+        # self.mlp_gamma = torch.nn.Conv2d(nhidden, norm_nc, kernel_size=3, padding=1)           # only float32
+        self.mlp_gamma = Conv2d(in_channels=nhidden,out_channels=norm_nc,kernel=3)               # float16 and float32
+        # self.mlp_beta = torch.nn.Conv2d(nhidden, norm_nc, kernel_size=3, padding=1)            # only float32
+        self.mlp_beta = Conv2d(in_channels=nhidden,out_channels=norm_nc,kernel=3)                # float16 and float32
 
     def forward(self, x, segmap):
         # Part 1. generate parameter-free normalized activations
