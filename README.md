@@ -7,7 +7,7 @@
 
 - `cfg_1=1 cfg_2=1: num_step= 120, 180`
 - `cfg_1=1 cfg_2=3.5: num_step = 256, 200`
-- if train.py `blur-sigma-max=3` then generate.py `blur_sigma_max_second=3`
+- if train.py `blur-sigma-max=3` then generate.py `blur_sigma_max_second=3` (=2 or =3, which better? not kown without abliation)
 
 ## still tidying up
 arguments for configurations of the first stage are:
@@ -86,6 +86,7 @@ just run `python train_XXX` or run command in scripts `xxx.sh`
 just run `python generate_XXX`
 
 ## trick
-- warm up: lr = 1e-3 (train 1M) label = torch.zero_like(label), unconditional pretrain
+- warm up(in training_loop.py : line190): lr = 1e-3 (train 1M) label = torch.zero_like(label), unconditional pretrain
+- cfg train(in training_loop.py : line190): radom 10% label = torch.zero_like(label)
 - loss scale: when loss = 0.1XXX and hold, loss scale=2 and more bathsize  make it to 0.2XXX, when then again stable to 0.1XXX ,set loss scale to 4 make it to 0.2XXX ... max loss scale 16, at last loss scale=1
-- loss scale: in trainloop `t = 32 if images.shape[-1] == 64 else 256` make `t` bigger
+- loss scale: in trainloop `t = 32 if images.shape[-1] == 64 else 256` make `t` bigger (may not necessary?)
