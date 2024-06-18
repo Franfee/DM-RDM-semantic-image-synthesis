@@ -21,38 +21,12 @@ import numpy as np
 import torch.nn.functional as F
 
 import dnnlib
+
+from generate_first import StackedRandomGenerator, parse_int_list, preprocess_input, save_samples
 from training.image_datasets import load_data
 from torch_utils import distributed as dist
-from blurring import dct_2d, idct_2d
-from blurring import block_noise, get_alpha_t
-
-
-def preprocess_input(data, device, num_classes):
-    # move to GPU and change data types
-    data['label'] = data['label'].long()
-
-    # create one-hot label map
-    label_map = data['label']
-    bs, _, h, w = label_map.size()
-    input_label = torch.FloatTensor(bs, num_classes, h, w).zero_()
-    input_semantics = input_label.scatter_(1, label_map, 1.0)
-
-    # concatenate instance map if it exists
-    if 'instance' in data:
-        inst_map = data['instance']
-        instance_edge_map = get_edges(inst_map)
-        input_semantics = torch.cat((input_semantics, instance_edge_map), dim=1)
-
-    return input_semantics.to(device)
-
-
-def get_edges(t):
-    edge = torch.ByteTensor(t.size()).zero_()
-    edge[:, :, :, 1:] = edge[:, :, :, 1:] | (t[:, :, :, 1:] != t[:, :, :, :-1])
-    edge[:, :, :, :-1] = edge[:, :, :, :-1] | (t[:, :, :, 1:] != t[:, :, :, :-1])
-    edge[:, :, 1:, :] = edge[:, :, 1:, :] | (t[:, :, 1:, :] != t[:, :, :-1, :])
-    edge[:, :, :-1, :] = edge[:, :, :-1, :] | (t[:, :, 1:, :] != t[:, :, :-1, :])
-    return edge.float()
+from training.blurring import dct_2d, idct_2d
+from training.blurring import block_noise, get_alpha_t
 
 
 def blur_sampler(
@@ -150,120 +124,6 @@ def blur_sampler(
                     + s_noise * t_next * randn_like(x_next)
                     
     return x_next
-
-
-def edm_sampler(
-    net, latents, class_labels=None, randn_like=torch.randn_like,
-    num_steps=256, sigma_min=0.002, sigma_max=80, rho=7,
-    S_churn=40, S_min=0.05, S_max=50, S_noise=1.003, cfg_scale=0
-):
-    
-    # Adjust noise levels based on what's supported by the network.
-    sigma_min = max(sigma_min, net.sigma_min)
-    sigma_max = min(sigma_max, net.sigma_max)
-    
-    # Time step discretization.
-    step_indices = torch.arange(num_steps, dtype=torch.float64, device=latents.device)
-    t_steps = (sigma_max ** (1 / rho) + step_indices / (num_steps - 1) * (sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
-    t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])]) # t_N = 0
-    
-    # Main sampling loop.
-    x_next = latents.to(torch.float64) * t_steps[0]
-    
-    for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])): # 0, ..., N-1
-        x_cur = x_next
-        
-        # Increase noise temporarily.
-        gamma = min(S_churn / num_steps, np.sqrt(2) - 1) if S_min <= t_cur <= S_max else 0
-        t_hat = net.round_sigma(t_cur + gamma * t_cur)
-        x_hat = x_cur + (t_hat ** 2 - t_cur ** 2).sqrt() * S_noise * randn_like(x_cur)
-        
-        # Euler step.
-        if cfg_scale > 1:
-            denoised_cond = net(x_hat, t_hat, class_labels).to(torch.float64)
-            denoised_uncond = net(x_hat, t_hat, None).to(torch.float64)
-            denoised = cfg_scale * denoised_cond - (cfg_scale - 1) * denoised_uncond
-        else:
-            denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
-        d_cur = (x_hat - denoised) / t_hat
-        
-        # ## adding SDE
-        # g_t = 0.05 * t_next
-        # a_t = ((t_next**2 - g_t**2) / t_hat**2) ** 0.5
-
-        # x_next = x_hat + (a_t - 1) * t_hat * d_cur + g_t * randn_like(x_next)
-
-        # # Apply 2nd order correction.
-        # if i < num_steps - 1:
-        #     denoised = net(x_next, t_next, class_labels).to(torch.float64)
-        #     d_prime = (x_next - denoised) / t_next
-        #     x_next = x_hat + (a_t - 1) * t_hat * (0.5 * d_cur + 0.5 * d_prime) + g_t * randn_like(x_next)
-        
-        x_next = x_hat + (t_next - t_hat) * d_cur
-        
-        # Apply 2nd order correction.
-        if i < num_steps - 1:
-            if cfg_scale > 1:
-                denoised_cond = net(x_next, t_next, class_labels).to(torch.float64)
-                denoised_uncond = net(x_next, t_next, None).to(torch.float64)
-                denoised = cfg_scale * denoised_cond - (cfg_scale - 1) * denoised_uncond
-            else:
-                denoised = net(x_next, t_next, class_labels).to(torch.float64)
-            d_prime = (x_next - denoised) / t_next
-            x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
-            
-    return x_next
-
-#----------------------------------------------------------------------------
-# Wrapper for torch.Generator that allows specifying a different random seed
-# for each sample in a minibatch.
-
-class StackedRandomGenerator:
-    def __init__(self, device, seeds):
-        super().__init__()
-        self.generators = [torch.Generator(device).manual_seed(int(seed) % (1 << 32)) for seed in seeds]
-
-    def randn(self, size, **kwargs):
-        assert size[0] == len(self.generators)
-        return torch.stack([torch.randn(size[1:], generator=gen, **kwargs) for gen in self.generators])
-
-    def randn_like(self, input):
-        return self.randn(input.shape, dtype=input.dtype, layout=input.layout, device=input.device)
-
-    def randint(self, *args, size, **kwargs):
-        assert size[0] == len(self.generators)
-        return torch.stack([torch.randint(*args, size=size[1:], generator=gen, **kwargs) for gen in self.generators])
-    
-#----------------------------------------------------------------------------
-# Parse a comma separated list of numbers or ranges and return a list of ints.
-# Example: '1,2,5-10' returns [1, 2, 5, 6, 7, 8, 9, 10]
-
-def parse_int_list(s):
-    if isinstance(s, list): return s
-    ranges = []
-    range_re = re.compile(r'^(\d+)-(\d+)$')
-    for p in s.split(','):
-        m = range_re.match(p)
-        if m:
-            ranges.extend(range(int(m.group(1)), int(m.group(2))+1))
-        else:
-            ranges.append(int(p))
-    return ranges
-
-
-#----------------------------------------------------------------------------
-# Sample saver
-
-def save_samples(images, batch_seeds, out_dir):
-    images_np = (images * 127.5 + 128).clip(0, 255).to(torch.uint8).permute(0, 2, 3, 1).cpu().numpy()
-    for seed, image_np in zip(batch_seeds, images_np):
-        image_dir = os.path.join(out_dir, f'{seed - seed % 1000:06d}')
-        os.makedirs(image_dir, exist_ok=True)
-        image_path = os.path.join(image_dir, f'{seed:06d}.png')
-        if image_np.shape[2] == 1:
-            Image.fromarray(image_np[:, :, 0], 'L').save(image_path)
-        else:
-            Image.fromarray(image_np, 'RGB').save(image_path)
 
 #----------------------------------------------------------------------------
 

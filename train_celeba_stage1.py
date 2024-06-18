@@ -112,13 +112,6 @@ def main(**kwargs):
     c.optimizer_kwargs = dnnlib.EasyDict(class_name='torch.optim.Adam', lr=opts.lr, betas=[0.9,0.999], eps=1e-8)
     
     # Network architecture.
-    # if opts.arch == 'ddpmpp':
-    #     c.network_kwargs.update(model_type='SongUNet', embedding_type='positional', encoder_type='standard', decoder_type='standard')
-    #     c.network_kwargs.update(channel_mult_noise=1, resample_filter=[1,1], model_channels=128, channel_mult=[2,2,2])
-    # elif opts.arch == 'ncsnpp':
-    #     c.network_kwargs.update(model_type='SongUNet', embedding_type='fourier', encoder_type='residual', decoder_type='standard')
-    #     c.network_kwargs.update(channel_mult_noise=2, resample_filter=[1,3,3,1], model_channels=128, channel_mult=[2,2,2])
-    # else:
     assert opts.arch == 'adm'
     if c.dataset_kwargs.resolution == 256: # ADM's setting for 256x256
         c.network_kwargs.update(model_type='DhariwalUNet', model_channels=256, channel_mult=[1,1,2,2,4,4], num_blocks=2)
@@ -127,13 +120,7 @@ def main(**kwargs):
     c.network_kwargs.update(eff_attn=opts.eff_attn)
 
     # Preconditioning & loss function.
-    if opts.precond == 'vp':
-        c.network_kwargs.class_name = 'training.networks.VPPrecond'
-        c.loss_kwargs.class_name = 'training.loss.VPLoss'
-    elif opts.precond == 've':
-        c.network_kwargs.class_name = 'training.networks.VEPrecond'
-        c.loss_kwargs.class_name = 'training.loss.VELoss'
-    elif opts.precond == 'blur':
+    if opts.precond == 'blur':
         c.network_kwargs.class_name = 'training.networks.EDMPrecond'
         c.loss_kwargs.class_name = 'training.loss.BlurLoss'
         
