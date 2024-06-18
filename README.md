@@ -90,3 +90,10 @@ just run `python generate_XXX`
 - cfg train(in training_loop.py : line190): radom 10% label = torch.zero_like(label)
 - loss scale: when loss = 0.1XXX and hold, loss scale=2 and more bathsize  make it to 0.2XXX, when then again stable to 0.1XXX ,set loss scale to 4 make it to 0.2XXX ... max loss scale 16, at last loss scale=1
 - loss scale: in trainloop `t = 32 if images.shape[-1] == 64 else 256` make `t` bigger (may not necessary?)
+
+## ENV
+
+- pip xformers : -i https://pypi.mirrors.ustc.edu.cn/simple/ 
+
+- torch 2.0.0  <---> xformers 0.0.19
+- torch 2.0.1  <---> xformers 0.0.20
