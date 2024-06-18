@@ -41,10 +41,10 @@ https://drive.google.com/file/d/1TKhN9kDvJEcpbIarwsd1_fsTR2vGx6LC/view
 ## training device
 - 1 * V100 32G for pre-testing、program and debug , provided by Visual Computing and Virtual Reality Key Laboratory of Sichuan Province
 - 1 * RTX4090 24G , 1 * A100 40G , 1 * A40 48G for stage-1 training, Rent by GPU computing platform
-- 1 * A100 40G and 1 * A100 80G for stage-2 training, Rent by GPU computing platform
+- 1 * A100 40G and 1 * L20 48G and 1 * A100 80G for stage-2 training, Rent by GPU computing platform
 
 ### !!!
-- !!!  in stage 2,   batch-size=1 > 24G !!!  , batch-size=3 = 44G 
+- !!!  in stage 2,   batch-size=1 > 24G(float32) !!!  , batch-size=3 = 44G(float32)  batch-size=6 = 48G(fp16=True)  
 - !!! A100s recommond
 
 ### !!! all must fit envionment .espcially scipy!!!  and  xformer!!!
