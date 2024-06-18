@@ -187,6 +187,10 @@ def training_loop(
                         
                 images = images.to(device)
                 cond = preprocess_input(cond, device, num_classes=dataset_kwargs.label_dim)
+                
+                # TODO ADD
+                # radom 10%-30% cond = torch.zero_like(cond)
+
 
                 loss = loss_fn(net=ddp, images=images, labels=cond, augment_pipe=augment_pipe)
                 training_stats.report('Loss/loss', loss)
