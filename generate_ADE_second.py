@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 import dnnlib
 
-from generate_first import StackedRandomGenerator, parse_int_list, preprocess_input, save_samples
+from generate_ADE_first import StackedRandomGenerator, parse_int_list, preprocess_input, save_samples
 from training.image_datasets import load_data
 from torch_utils import distributed as dist
 from training.blurring import dct_2d, idct_2d
@@ -129,10 +129,10 @@ def blur_sampler(
 
 @click.command()
 
-@click.option('--data',          help='Path to the dataset', metavar='ZIP|DIR',                     type=str, default="/root/autodl-tmp/CelebA-HQ")
-@click.option('--data_mode',     help='dataset mode', metavar='celeba|ade20k',                      type=click.Choice(['celeba', 'ade20k']), default='celeba', show_default=True)
+@click.option('--data',          help='Path to the dataset', metavar='ZIP|DIR',                     type=str, default="datasets/ADEChallengeData2016")
+@click.option('--data_mode',     help='dataset mode', metavar='celeba|ade20k',                      type=click.Choice(['celeba', 'ade20k']), default='ade20k', show_default=True)
 @click.option('--resolution',    help='image resolution  [default: varies]', metavar='INT',         type=int, default=256)
-@click.option('--label_dim',     help='label_dim  [default: varies]', metavar='INT',                type=int, default=19)
+@click.option('--label_dim',     help='label_dim  [default: varies]', metavar='INT',                type=int, default=151)
 
 @click.option('--indir',                     help='Input directory for only-second-stage sampler', metavar='DIR',     type=str, default="result/de64")
 @click.option('--outdir',                    help='Where to save the output images', metavar='DIR',                   type=str, default="result")
@@ -141,15 +141,15 @@ def blur_sampler(
 
 # second stage sampler config
 @click.option('--network_second',            help='Network pickle filename', metavar='PATH|URL',                      type=str,default="/root/autodl-tmp/training_detail/network-256-snapshot-012101.pkl")
-@click.option('--num_steps_second',          help='Number of sampling steps for second stage', metavar='INT',         type=click.IntRange(min=1), default=260, show_default=True)
+@click.option('--num_steps_second',          help='Number of sampling steps for second stage', metavar='INT',         type=click.IntRange(min=1), default=200, show_default=True)
 @click.option('--sigma_min_second',          help='Lowest noise level  [default: varies]', metavar='FLOAT',           type=click.FloatRange(min=0, min_open=True))
 @click.option('--sigma_max_second',          help='Highest noise level  [default: varies]', metavar='FLOAT',          type=click.FloatRange(min=0, min_open=True))
 @click.option('--blur_sigma_max_second',     help='Maximum sigma of blurring schedule', metavar='FLOAT',              type=click.FloatRange(min=0), default=3.0, show_default=True)
-@click.option('--rho_second',                help='Time step exponent', metavar='FLOAT',                              type=click.FloatRange(min=0, min_open=True), default=7, show_default=True)
+@click.option('--rho_second',                help='Time step exponent', metavar='FLOAT',                              type=click.FloatRange(min=0, min_open=True), default=100, show_default=True)
 @click.option('--cfg_scale_second',          help='Scale of classifier-free guidance', metavar='FLOAT',               type=click.FloatRange(min=0), default=3.5, show_default=True)
 @click.option('--up_scale_second',           help='Scale of upsampling, default 256/64=4', metavar='FLOAT',           type=click.IntRange(min=2), default=4, show_default=True)
-@click.option('--truncation_sigma_second',   help='Truncation point of noise schedule', metavar='FLOAT',              type=click.FloatRange(min=0, min_open=True), default=0.95, show_default=True)
-@click.option('--truncation_t_second',       help='Truncation point of time schedule', metavar='FLOAT',               type=click.FloatRange(min=0, max=1, min_open=True), default=0.9, show_default=True)
+@click.option('--truncation_sigma_second',   help='Truncation point of noise schedule', metavar='FLOAT',              type=click.FloatRange(min=0, min_open=True), default=0.9, show_default=True)
+@click.option('--truncation_t_second',       help='Truncation point of time schedule', metavar='FLOAT',               type=click.FloatRange(min=0, max=1, min_open=True), default=0.93, show_default=True)
 @click.option('--s_block_second',            help='Strength of block noise addition', metavar='FLOAT',                type=click.FloatRange(min=0), default=0.15, show_default=True)
 @click.option('--s_noise_second',            help='Strength of stochasticity', metavar='FLOAT',                       type=click.FloatRange(min=0), default=0.23, show_default=True)
 

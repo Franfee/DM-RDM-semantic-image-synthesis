@@ -1,7 +1,18 @@
 ## SISRDM 
-- s_block_second = 0.15
-- s_noise_second = 0.23
 
+### CelebA
+- s_block_second = 0.15
+- s_noise_second = 0.2
+- prob-length=0.89 
+- blur-sigma-max=2
+
+### ADE
+- s_block_second = 0.15
+- s_noise_second = 0.2
+- prob-length=0.93 
+- blur-sigma-max=3
+
+### etc
 - dataloader only running in linux, you change "\\" to "//" to fit windows
 - not yet reached SISRDM`s limit ,no time to training anymore
 

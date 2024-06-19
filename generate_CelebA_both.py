@@ -21,8 +21,8 @@ import numpy as np
 import torch.nn.functional as F
 
 import dnnlib
-from generate_first import StackedRandomGenerator, edm_sampler, parse_int_list, preprocess_input, save_samples
-from generate_second import blur_sampler
+from generate_ADE_first import StackedRandomGenerator, edm_sampler, parse_int_list, preprocess_input, save_samples
+from generate_ADE_second import blur_sampler
 from training.image_datasets import load_data
 from torch_utils import distributed as dist
 
@@ -30,12 +30,11 @@ from torch_utils import distributed as dist
 #----------------------------------------------------------------------------
 @click.command()
 
-@click.option('--data',          help='Path to the dataset', metavar='ZIP|DIR',                     type=str, default="datasets/ADEChallengeData2016")
-@click.option('--data_mode',     help='dataset mode', metavar='celeba|ade20k',                      type=click.Choice(['celeba', 'ade20k']), default='ade20k', show_default=True)
+@click.option('--data',          help='Path to the dataset', metavar='ZIP|DIR',                     type=str, default="/root/autodl-tmp/CelebA-HQ")
+@click.option('--data_mode',     help='dataset mode', metavar='celeba|ade20k',                      type=click.Choice(['celeba', 'ade20k']), default='celeba', show_default=True)
 @click.option('--resolution',    help='image resolution  [default: varies]', metavar='INT',         type=int, default=256)
-@click.option('--label_dim',     help='label_dim  [default: varies]', metavar='INT',                type=int, default=151)
+@click.option('--label_dim',     help='label_dim  [default: varies]', metavar='INT',                type=int, default=19)
 
-@click.option('--indir',                     help='Input directory for only-second-stage sampler', metavar='DIR',     type=str, default="result/de64")
 @click.option('--outdir',                    help='Where to save the output images', metavar='DIR',                   type=str, default="result")
 @click.option('--seeds',                     help='Random seeds (e.g. 1,2,5-10)', metavar='LIST',                     type=parse_int_list, default='0-63', show_default=True)
 @click.option('--batch', 'max_batch_size',   help='Maximum batch size', metavar='INT',                                type=click.IntRange(min=1), default=1, show_default=True)
@@ -64,12 +63,12 @@ from torch_utils import distributed as dist
 @click.option('--cfg_scale_second',          help='Scale of classifier-free guidance', metavar='FLOAT',               type=click.FloatRange(min=0), default=1, show_default=True)
 @click.option('--up_scale_second',           help='Scale of upsampling, default 256/64=4', metavar='FLOAT',           type=click.IntRange(min=2), default=4, show_default=True)
 @click.option('--truncation_sigma_second',   help='Truncation point of noise schedule', metavar='FLOAT',              type=click.FloatRange(min=0, min_open=True), default=0.95, show_default=True)
-@click.option('--truncation_t_second',       help='Truncation point of time schedule', metavar='FLOAT',               type=click.FloatRange(min=0, max=1, min_open=True), default=0.9, show_default=True)
+@click.option('--truncation_t_second',       help='Truncation point of time schedule', metavar='FLOAT',               type=click.FloatRange(min=0, max=1, min_open=True), default=1.05, show_default=True)
 @click.option('--s_block_second',            help='Strength of block noise addition', metavar='FLOAT',                type=click.FloatRange(min=0), default=0.15, show_default=True)
 @click.option('--s_noise_second',            help='Strength of stochasticity', metavar='FLOAT',                       type=click.FloatRange(min=0), default=0.2, show_default=True)
 
 def main(outdir, seeds, max_batch_size, sampler_stages, 
-         network_first=None, network_second=None, indir=None,
+         network_first=None, network_second=None,
          device=torch.device('cuda'), **sampler_kwargs):
     
     dist.init()
@@ -94,54 +93,40 @@ def main(outdir, seeds, max_batch_size, sampler_stages,
     if dist.get_rank() != 0:
         torch.distributed.barrier()
     
-    if sampler_stages in ['first', 'both']:
-        dist.print0(f'Loading first stage network from "{network_first}"...')
-        
-        assert network_first.endswith('pkl') or network_first.endswith('pt'), "Unknown format of the ckpt filename"
-        if network_first.endswith('.pkl'):
-            with dnnlib.util.open_url(network_first, verbose=(dist.get_rank() == 0)) as f:
-                net_first = pickle.load(f)['ema'].to(device)
-        elif network_first.endswith('.pt'):
-            data = torch.load(network_first, map_location=torch.device('cpu'))
-            net_first = data['ema'].eval().to(device)
-        
-        first_stage_sampler_kwargs = {
-            k[:-6]: v for k, v in sampler_kwargs.items() if k.endswith('_first') and v is not None
-        }
-    if sampler_stages in ['second', 'both']:
-        dist.print0(f'Loading second stage network from "{network_second}"...')
-        
-        assert network_second.endswith('pkl') or network_second.endswith('pt'), "Unknown format of the ckpt filename"
-        if network_second.endswith('.pkl'):
-            with dnnlib.util.open_url(network_second, verbose=(dist.get_rank() == 0)) as f:
-                net_second = pickle.load(f)['ema'].to(device)
-        elif network_second.endswith('.pt'):
-            data = torch.load(network_second, map_location=torch.device('cpu'))
-            net_second = data['ema'].eval().to(device)
-        
-        second_stage_sampler_kwargs = {
-            k[:-7]: v for k, v in sampler_kwargs.items() if k.endswith('_second') and v is not None
-        }
+    dist.print0(f'Loading first stage network from "{network_first}"...')
     
-    if sampler_stages == 'second':
-        # Preload for only-second-stage sampling.
-        dist.print0(f'Preloading first stage samples from "{indir}"...')
-        preload_images = []
-        for batch_seeds in rank_batches:
-            image_paths = [os.path.join(indir, f'{seed - seed % 1000:06d}', f'{seed:06d}.png') for seed in batch_seeds]
-            batch_images = [np.array(Image.open(path)) for path in image_paths]
-            batch_images = [image[np.newaxis, :, :] if image.ndim == 2 else image.transpose(2, 0, 1) for image in batch_images]
-            batch_images = np.concatenate([image[np.newaxis, ...] for image in batch_images], axis=0)
-            preload_images.append(batch_images)
+    assert network_first.endswith('pkl') or network_first.endswith('pt'), "Unknown format of the ckpt filename"
+    if network_first.endswith('.pkl'):
+        with dnnlib.util.open_url(network_first, verbose=(dist.get_rank() == 0)) as f:
+            net_first = pickle.load(f)['ema'].to(device)
+    elif network_first.endswith('.pt'):
+        data = torch.load(network_first, map_location=torch.device('cpu'))
+        net_first = data['ema'].eval().to(device)
+    
+    first_stage_sampler_kwargs = {
+        k[:-6]: v for k, v in sampler_kwargs.items() if k.endswith('_first') and v is not None
+    }
+
+    dist.print0(f'Loading second stage network from "{network_second}"...')
+    
+    assert network_second.endswith('pkl') or network_second.endswith('pt'), "Unknown format of the ckpt filename"
+    if network_second.endswith('.pkl'):
+        with dnnlib.util.open_url(network_second, verbose=(dist.get_rank() == 0)) as f:
+            net_second = pickle.load(f)['ema'].to(device)
+    elif network_second.endswith('.pt'):
+        data = torch.load(network_second, map_location=torch.device('cpu'))
+        net_second = data['ema'].eval().to(device)
+    
+    second_stage_sampler_kwargs = {
+        k[:-7]: v for k, v in sampler_kwargs.items() if k.endswith('_second') and v is not None
+    }
             
     # Other ranks follow.
     if dist.get_rank() == 0:
         torch.distributed.barrier()
     
-    if sampler_stages in ['first', 'both']:
-        dist.print0('first stage config:', first_stage_sampler_kwargs)
-    if sampler_stages in ['second', 'both']:
-        dist.print0('second stage config:', second_stage_sampler_kwargs)
+    dist.print0('first stage config:', first_stage_sampler_kwargs)
+    dist.print0('second stage config:', second_stage_sampler_kwargs)
     
     # Loop over batches.
     dist.print0(f'Generating {len(seeds)} images to "{outdir}"...')
@@ -151,32 +136,26 @@ def main(outdir, seeds, max_batch_size, sampler_stages,
         if batch_size == 0:
             continue
         
+        # preprocess_input
         ground_images, cond = next(dataset_iterator)    
         class_labels = preprocess_input(cond, device, sampler_kwargs['label_dim'])
         
-        if sampler_stages in ['first', 'both']:
-            # First stage generation.
-            rnd = StackedRandomGenerator(device, batch_seeds)
-            latents = rnd.randn([batch_size, net_first.img_channels, net_first.img_resolution, net_first.img_resolution], device=device)
-            images = edm_sampler(net_first, latents, class_labels, randn_like=rnd.randn_like, **first_stage_sampler_kwargs)
-        else:
-            images = torch.tensor(preload_images[i], device=device, dtype=torch.float64) / 127.5 - 1
+        # First stage generation.
+        rnd = StackedRandomGenerator(device, batch_seeds)
+        latents = rnd.randn([batch_size, net_first.img_channels, net_first.img_resolution, net_first.img_resolution], device=device)
+        images = edm_sampler(net_first, latents, class_labels, randn_like=rnd.randn_like, **first_stage_sampler_kwargs)
         
         # Save outputs
         save_samples(images, batch_seeds, outdir+"/de64")
-        if sampler_stages == 'first':
-            continue
-        else:
-            # Upsample for second stage generation.
-            images = F.interpolate(images, 256)
-            save_samples(ground_images, batch_seeds, outdir+"/gt256")
-            
-            
-        if sampler_stages in ['second', 'both']:
-            # Second stage generation.
-            images = blur_sampler(net_second, images, class_labels, randn_like=rnd.randn_like, **second_stage_sampler_kwargs)
-            
-            save_samples(images, batch_seeds, outdir+"/de256")
+
+        # Upsample for second stage generation.
+        images = F.interpolate(images, 256)
+        save_samples(ground_images, batch_seeds, outdir+"/gt256")
+
+        # Second stage generation.
+        images = blur_sampler(net_second, images, class_labels, randn_like=rnd.randn_like, **second_stage_sampler_kwargs)
+        
+        save_samples(images, batch_seeds, outdir+"/de256")
         
     # Done.
     torch.distributed.barrier()

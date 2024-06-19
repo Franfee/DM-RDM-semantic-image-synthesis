@@ -167,7 +167,6 @@ def save_samples(images, batch_seeds, out_dir):
 
 #----------------------------------------------------------------------------
 @click.command()
-
 @click.option('--data',          help='Path to the dataset', metavar='ZIP|DIR',                     type=str, default="datasets/ADEChallengeData2016")
 @click.option('--data_mode',     help='dataset mode', metavar='celeba|ade20k',                      type=click.Choice(['celeba', 'ade20k']), default='ade20k', show_default=True)
 @click.option('--resolution',    help='image resolution  [default: varies]', metavar='INT',         type=int, default=64)

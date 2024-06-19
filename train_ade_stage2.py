@@ -60,7 +60,7 @@ def parse_int_list(s):
 @click.option('--cres',          help='Channels per resolution  [default: varies]', metavar='LIST', type=parse_int_list)
 @click.option('--lr',            help='Learning rate', metavar='FLOAT',                             type=click.FloatRange(min=0, min_open=True), default=1e-4, show_default=True)
 @click.option('--ema',           help='EMA half-life', metavar='MIMG',                              type=click.FloatRange(min=0), default=5, show_default=True)
-@click.option('--dropout',       help='Dropout probability', metavar='FLOAT',                       type=click.FloatRange(min=0, max=1), default=0.12, show_default=True)
+@click.option('--dropout',       help='Dropout probability', metavar='FLOAT',                       type=click.FloatRange(min=0, max=1), default=0.1, show_default=True)
 @click.option('--augment',       help='Augment probability', metavar='FLOAT',                       type=click.FloatRange(min=0, max=1), default=0)
 @click.option('--xflip',         help='Enable dataset x-flips', metavar='BOOL',                     type=bool, default=False, show_default=True)
 
@@ -89,7 +89,7 @@ def parse_int_list(s):
 @click.option('--up-scale',      help='Upsampling scale',                                           type=click.IntRange(min=1), default=4, show_default=True)
 @click.option('--block-scale',   help='Scale of block noise addition', metavar='FLOAT',             type=click.FloatRange(min=0, max=1), default=0.15, show_default=True)
 @click.option('--prob-length',   help='Truncation probability length', metavar='FLOAT',             type=click.FloatRange(min=0), default=0.93, show_default=True)
-@click.option('--blur-sigma-max',help='Maximum sigma of blurring schedule', metavar='FLOAT',        type=click.FloatRange(min=0), default=2.0, show_default=True)
+@click.option('--blur-sigma-max',help='Maximum sigma of blurring schedule', metavar='FLOAT',        type=click.FloatRange(min=0), default=3.0, show_default=True)
 
 def main(**kwargs):
     """Train diffusion-based generative model using the techniques described in the
