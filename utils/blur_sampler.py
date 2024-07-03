@@ -6,6 +6,7 @@ from training.blurring import dct_2d, idct_2d
 from training.blurring import block_noise, get_alpha_t
 
 
+@torch.no_grad()
 def blur_sampler(
     net, latents, class_labels=None, randn_like=torch.randn_like,
     num_steps=250, sigma_min=0.008, sigma_max=80, rho=7,
