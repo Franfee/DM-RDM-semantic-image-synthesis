@@ -21,10 +21,13 @@ import numpy as np
 import torch.nn.functional as F
 
 import dnnlib
-from generate_ADE_first import StackedRandomGenerator, edm_sampler, parse_int_list, preprocess_input, save_samples
-from generate_ADE_second import blur_sampler
+
 from training.image_datasets import load_data
 from torch_utils import distributed as dist
+from utils.blur_sampler import blur_sampler
+from utils.edm_sampler import edm_sampler
+from utils.preprocess import preprocess_input
+from utils.utils import StackedRandomGenerator, parse_int_list, save_samples
 
 
 #----------------------------------------------------------------------------
@@ -39,23 +42,19 @@ from torch_utils import distributed as dist
 @click.option('--seeds',                     help='Random seeds (e.g. 1,2,5-10)', metavar='LIST',                     type=parse_int_list, default='0-63', show_default=True)
 @click.option('--batch', 'max_batch_size',   help='Maximum batch size', metavar='INT',                                type=click.IntRange(min=1), default=1, show_default=True)
 
-@click.option('--sampler_stages',            help='Which stage to conduct sampler', metavar='first|second|both',      type=click.Choice(['first', 'second', 'both']), default='both')
-
 # first stage sampler config
-@click.option('--network_first',             help='Network pickle filename', metavar='PATH|URL',                      type=str,default="training_detail/ade20k/network-64-snapshot-111263.pkl")
-@click.option('--num_steps_first',           help='Number of sampling steps for first stage', metavar='INT',          type=click.IntRange(min=1), default=256, show_default=True)
+@click.option('--network_first',             help='Network pickle filename', metavar='PATH|URL',                      type=str,default="training_detail/celeba/network-64-snapshot-111263.pkl")
+@click.option('--num_steps_first',           help='Number of sampling steps for first stage', metavar='INT',          type=click.IntRange(min=1), default=120, show_default=True)
 @click.option('--sigma_min_first',           help='Lowest noise level  [default: varies]', metavar='FLOAT',           type=click.FloatRange(min=0, min_open=True))
 @click.option('--sigma_max_first',           help='Highest noise level  [default: varies]', metavar='FLOAT',          type=click.FloatRange(min=0, min_open=True))
 @click.option('--rho_first',                 help='Time step exponent', metavar='FLOAT',                              type=click.FloatRange(min=0, min_open=True), default=7, show_default=True)
 @click.option('--cfg_scale_first',           help='Scale of classifier-free guidance', metavar='FLOAT',               type=click.FloatRange(min=0), default=1, show_default=True)
-@click.option('--S_churn', 'S_churn_first',  help='Stochasticity strength', metavar='FLOAT',                          type=click.FloatRange(min=0), default=40, show_default=True)
-@click.option('--S_min', 'S_min_first',      help='Stoch. min noise level', metavar='FLOAT',                          type=click.FloatRange(min=0), default=0.05, show_default=True)
-@click.option('--S_max', 'S_max_first',      help='Stoch. max noise level', metavar='FLOAT',                          type=click.FloatRange(min=0), default=50, show_default=True)
-@click.option('--S_noise', 'S_noise_first',  help='Stoch. noise inflation', metavar='FLOAT',                          type=float, default=1, show_default=True)
+
+@click.option('--sde_scale_first',           help='Stoch. noise inflation', metavar='FLOAT',                          type=float, default=0.05, show_default=True)
 
 # second stage sampler config
-@click.option('--network_second',            help='Network pickle filename', metavar='PATH|URL',                      type=str,default="training_detail/ade20k/network-256-snapshot-010262.pkl")
-@click.option('--num_steps_second',          help='Number of sampling steps for second stage', metavar='INT',         type=click.IntRange(min=1), default=200, show_default=True)
+@click.option('--network_second',            help='Network pickle filename', metavar='PATH|URL',                      type=str,default="training_detail/celeba/network-256-snapshot-010262.pkl")
+@click.option('--num_steps_second',          help='Number of sampling steps for second stage', metavar='INT',         type=click.IntRange(min=1), default=150, show_default=True)
 @click.option('--sigma_min_second',          help='Lowest noise level  [default: varies]', metavar='FLOAT',           type=click.FloatRange(min=0, min_open=True))
 @click.option('--sigma_max_second',          help='Highest noise level  [default: varies]', metavar='FLOAT',          type=click.FloatRange(min=0, min_open=True))
 @click.option('--blur_sigma_max_second',     help='Maximum sigma of blurring schedule', metavar='FLOAT',              type=click.FloatRange(min=0), default=2.0, show_default=True)
@@ -67,10 +66,7 @@ from torch_utils import distributed as dist
 @click.option('--s_block_second',            help='Strength of block noise addition', metavar='FLOAT',                type=click.FloatRange(min=0), default=0.15, show_default=True)
 @click.option('--s_noise_second',            help='Strength of stochasticity', metavar='FLOAT',                       type=click.FloatRange(min=0), default=0.2, show_default=True)
 
-def main(outdir, seeds, max_batch_size, sampler_stages, 
-         network_first=None, network_second=None,
-         device=torch.device('cuda'), **sampler_kwargs):
-    
+def main(outdir, seeds, max_batch_size, network_first=None, network_second=None, device=torch.device('cuda'), **sampler_kwargs):
     dist.init()
     num_batches = ((len(seeds) - 1) // (max_batch_size * dist.get_world_size()) + 1) * dist.get_world_size()
     all_batches = torch.as_tensor(seeds).tensor_split(num_batches)

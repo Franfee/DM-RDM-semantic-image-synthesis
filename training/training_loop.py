@@ -16,48 +16,13 @@ import psutil
 import numpy as np
 import torch
 import dnnlib
+
+from training.image_datasets import load_data
 from torch_utils import distributed as dist
 from torch_utils import training_stats
 from torch_utils import misc
-from training.image_datasets import load_data
+from utils.preprocess import preprocess_input
 
-
-#----------------------------------------------------------------------------
-def preprocess_input(data, device, num_classes=151, drop_rate=0.0):
-    # move to GPU and change data types
-    data['label'] = data['label'].long()
-
-    # create one-hot label map
-    label_map = data['label']
-    bs, _, h, w = label_map.size()
-    nc = num_classes
-    input_label = torch.FloatTensor(bs, nc, h, w).zero_()
-    input_semantics = input_label.scatter_(1, label_map, 1.0)
-
-    # concatenate instance map if it exists
-    if 'instance' in data:
-        inst_map = data['instance']
-        instance_edge_map = get_edges(inst_map)
-        input_semantics = torch.cat((input_semantics, instance_edge_map), dim=1)
-
-    if drop_rate > 0.0:
-        mask = (torch.rand([input_semantics.shape[0], 1, 1, 1]) > drop_rate).float()
-        input_semantics = input_semantics * mask
-
-    cond = {key: value for key, value in data.items() if key not in ['label', 'instance', 'path', 'label_ori']}
-    #cond['y'] = input_semantics.to(device)
-
-    #return cond
-    return input_semantics.to(device)
-
-
-def get_edges(t):
-    edge = torch.ByteTensor(t.size()).zero_()
-    edge[:, :, :, 1:] = edge[:, :, :, 1:] | (t[:, :, :, 1:] != t[:, :, :, :-1])
-    edge[:, :, :, :-1] = edge[:, :, :, :-1] | (t[:, :, :, 1:] != t[:, :, :, :-1])
-    edge[:, :, 1:, :] = edge[:, :, 1:, :] | (t[:, :, 1:, :] != t[:, :, :-1, :])
-    edge[:, :, :-1, :] = edge[:, :, :-1, :] | (t[:, :, 1:, :] != t[:, :, :-1, :])
-    return edge.float()
 
 # ---------------------------------------------------------------------------------------
 def training_loop(
