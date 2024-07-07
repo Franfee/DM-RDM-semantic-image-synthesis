@@ -1,4 +1,4 @@
-## SISRDM 
+# SISRDM 
 
 ### CelebA
 - s_block_second = 0.15
@@ -43,7 +43,7 @@ Arguments for configurations of the second stage are:
 - `s_block_second`: strength of block noise addition.
 - `s_noise_second`: strength of stochasticity.
 
-## Dataset Preparation
+# Dataset Preparation
 following SDM
 
 ### CelebAMask-HQ preprocessed
@@ -54,13 +54,13 @@ https://drive.google.com/file/d/1TKhN9kDvJEcpbIarwsd1_fsTR2vGx6LC/view
 - 1 * RTX4090 24G , 1 * A100 40G , 1 * A40 48G for stage-1 training, Rent by GPU computing platform
 - 1 * A100 40G and 1 * L20 48G and 1 * A100 80G for stage-2 training, Rent by GPU computing platform
 
-### !!!
+## !!!
 - !!!  in stage 2,   batch-size=1 > 24G(float32) !!!  , batch-size=3 = 44G(float32)  batch-size=6 = 48G(fp16=True)  
 - !!! A100s recommond
 
-### !!! all must fit envionment .espcially scipy!!!  and  xformer!!!
+## !!! all must fit envionment .espcially scipy!!!  and  xformer!!!
 
-## pick up in paper
+### pick up in paper
 ```
 celebA test:
     \labels\28229.png
@@ -74,7 +74,7 @@ ADE val:
     671.png
     693.png
 ```
-## Acknowledgements
+# Acknowledgements
 
 This implementation is based on 
 - https://github.com/NVlabs/edm (codebase of EDM)
@@ -90,17 +90,52 @@ LPIPS computation is based on
 
 Thanks a lot!
 
-## train
+# train
 just run `python train_XXX` or run command in scripts `xxx.sh`
 
-## test
+# test
 just run `python generate_XXX`
 
-## trick
-- warm up(in training_loop.py : line190): lr = 1e-3 (train 1M) label = torch.zero_like(label), unconditional pretrain
-- cfg train(in training_loop.py : line190): radom 10% label = torch.zero_like(label)
+# trick(need manual adjust)
+- warm up(in training_loop.py : line 156-160): lr = 1e-3 (train 1M) `label = torch.zero_like(label)`, unconditional pretrain
+- cfg train(in training_loop.py : line 156-160): radom 10% label = torch.zero_like(label)
 - loss scale: when loss = 0.1XXX and hold, loss scale=2 and more bathsize  make it to 0.2XXX, when then again stable to 0.1XXX ,set loss scale to 4 make it to 0.2XXX ... max loss scale 16, at last loss scale=1
 - loss scale: in trainloop `t = 32 if images.shape[-1] == 64 else 256` make `t` bigger (may not necessary?)
+
+
+# trick sp(need manual adjust)
+### augment
+- warm up : in `trick` open augment `label=zero`
+- finetune : manual adjust (in training_loop.py : line 156-160) open augment when `label=zero` 
+
+### augment test
+dim = 9
+augment_labels = tensor([ 0.0000,  0.0000,  0.0000, -0.0081, -0.1273,  0.5142,  0.5647, -0.6237, -0.6004])
+```
+# Pixel blitting.
+self.xflip              = float(xflip)              # Probability multiplier for x-flip.     .............. = {augment_labels[0]}
+self.yflip              = float(yflip)              # Probability multiplier for y-flip.     .............. = {augment_labels[1]}
+
+# Geometric transformations.
+self.scale              = float(scale)              # Probability multiplier for isotropic scaling. ....... = {augment_labels[2]}
+self.rotate_frac        = float(rotate_frac)        # Probability multiplier for fractional rotation. ..... = {augment_labels[3]}, {augment_labels[4]}
+self.aniso              = float(aniso)              # Probability multiplier for anisotropic scaling. ..... = {augment_labels[5]}, {augment_labels[6]}
+self.translate_frac     = float(translate_frac)     # Probability multiplier for fractional translation. .. = {augment_labels[7]}, {augment_labels[8]}
+
+# Color transformations. ( all closeed )
+self.brightness         = float(brightness)         # Probability multiplier for brightness.
+self.contrast           = float(contrast)           # Probability multiplier for contrast.
+self.lumaflip           = float(lumaflip)           # Probability multiplier for luma flip.
+self.hue                = float(hue)                # Probability multiplier for hue rotation.
+self.saturation         = float(saturation)         # Probability multiplier for saturation.
+self.brightness_std     = float(brightness_std)     # Standard deviation of brightness.
+self.contrast_std       = float(contrast_std)       # Log2 standard deviation of contrast.
+self.hue_max            = float(hue_max)            # Range of hue rotation, 1 = full circle.
+self.saturation_std     = float(saturation_std)     # Log2 standard deviation of saturation.
+
+```
+### after augment pipe: 
+![](augment.png)
 
 ## ENV
 
