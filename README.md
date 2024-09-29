@@ -143,3 +143,6 @@ self.saturation_std     = float(saturation_std)     # Log2 standard deviation of
 
 - torch 2.0.0  <---> xformers 0.0.19
 - torch 2.0.1  <---> xformers 0.0.20
+
+### show
+![](show.png)
